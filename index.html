@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Camera Scanner</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>QR Code Camera Scanner</h1>
+
+        <!-- Camera Scanner Section -->
+        <div id="cameraSection">
+            <div class="camera-container">
+                <video id="video" autoplay muted playsinline></video>
+                <canvas id="canvas" style="display: none;"></canvas>
+                <div class="scan-overlay">
+                    <div class="scan-box"></div>
+                </div>
+            </div>
+            <div class="camera-controls">
+                <button id="startBtn" class="control-btn">Start Camera</button>
+                <button id="stopBtn" class="control-btn" disabled>Stop Camera</button>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsSection" class="results-section">
+            <h3>Scan Result:</h3>
+            <div id="resultContent" class="result-content">
+                <p class="no-result">Camera is off. Click "Start Camera" to begin scanning.</p>
+            </div>
+            <button id="copyBtn" class="control-btn" style="display: none;">Copy Result</button>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="status" class="status-message"></div>
+    </div>
+
+    <!-- External library for QR code decoding -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <!-- Your application script -->
+    <script src="script.js"></script>
+</body>
+</html>
