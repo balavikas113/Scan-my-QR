@@ -1,155 +1,218 @@
-class QRCameraScanner {
-    constructor() {
-        // DOM Elements
-        this.video = document.getElementById('video');
-        this.canvas = document.getElementById('canvas');
-        this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
-        this.startBtn = document.getElementById('startBtn');
-        this.stopBtn = document.getElementById('stopBtn');
-        this.resultContent = document.getElementById('resultContent');
-        this.copyBtn = document.getElementById('copyBtn');
-        this.status = document.getElementById('status');
-        
-        // State
-        this.stream = null;
-        this.isScanning = false;
+let html5QrcodeScanner = null;
+let scanHistory = JSON.parse(localStorage.getItem('qrScanHistory')) || [];
 
-        this.bindEvents();
-    }
-
-    bindEvents() {
-        this.startBtn.addEventListener('click', () => this.startCamera());
-        this.stopBtn.addEventListener('click', () => this.stopCamera());
-        this.copyBtn.addEventListener('click', () => this.copyResult());
-    }
-
-    async startCamera() {
-        // **IMPORTANT**: Check if running on a secure context (localhost or https)
-        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-            this.showStatus('ERROR: Camera access requires a secure connection (HTTPS or localhost).', 'error');
-            return;
-        }
-
-        this.resetUI();
-        this.showStatus('Requesting camera permission...', 'info');
-
-        try {
-            // Request camera access. This is where the user gets the permission prompt.
-            const constraints = { video: { facingMode: 'environment' } };
-            this.stream = await navigator.mediaDevices.getUserMedia(constraints);
-            
-            // If permission is granted:
-            this.video.srcObject = this.stream;
-            this.video.onloadedmetadata = () => {
-                this.canvas.width = this.video.videoWidth;
-                this.canvas.height = this.video.videoHeight;
-                this.startContinuousScanning();
-            };
-
-            this.startBtn.disabled = true;
-            this.stopBtn.disabled = false;
-            this.showStatus('Camera active. Point it at a QR code.', 'success');
-            
-        } catch (error) {
-            // If permission is denied or another error occurs:
-            console.error("Camera access error:", error);
-            let errorMessage = "Could not start camera.";
-            if (error.name === "NotAllowedError") {
-                errorMessage = "Camera permission was denied. Please enable it in your browser settings.";
-            } else if (error.name === "NotFoundError") {
-                errorMessage = "No camera was found on this device.";
-            }
-            this.showStatus(errorMessage, 'error');
-        }
-    }
-
-    stopCamera() {
-        if (this.stream) {
-            this.stream.getTracks().forEach(track => track.stop());
-        }
-        this.isScanning = false;
-        this.video.srcObject = null;
-        this.startBtn.disabled = false;
-        this.stopBtn.disabled = true;
-        this.showStatus('Camera stopped.', 'info');
-        this.resetUI();
-    }
-
-    startContinuousScanning() {
-        this.isScanning = true;
-        requestAnimationFrame(this.scanFrame.bind(this));
-    }
-
-    scanFrame() {
-        if (!this.isScanning) return;
-
-        if (this.video.readyState === this.video.HAVE_ENOUGH_DATA) {
-            this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
-            const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-            const code = jsQR(imageData.data, imageData.width, imageData.height);
-
-            if (code) {
-                // When a code is found, stop scanning and show the result
-                this.isScanning = false;
-                this.displayResult(code.data);
-                this.stopBtn.disabled = true; // No need to stop manually after a find
-            }
-        }
-        
-        // Continue scanning if no code was found
-        if (this.isScanning) {
-            requestAnimationFrame(this.scanFrame.bind(this));
-        }
-    }
+// Initialize the application
+document.addEventListener('DOMContentLoaded', function() {
+    displayHistory();
     
-    displayResult(data) {
-        this.resultContent.innerHTML = ''; // Clear previous
-        const resultElement = document.createElement('a');
-        resultElement.textContent = data;
-        resultElement.className = 'qr-result';
-        
-        // Make the result a clickable link if it's a valid URL
-        try {
-            new URL(data);
-            resultElement.href = data;
-            resultElement.target = '_blank';
-            resultElement.rel = 'noopener noreferrer';
-        } catch (_) { /* Not a valid URL, do nothing */ }
-        
-        this.resultContent.appendChild(resultElement);
-        this.copyBtn.style.display = 'inline-block';
-        this.showStatus('QR Code Detected!', 'success');
-    }
+    // File input handler
+    const fileInput = document.getElementById('qr-input-file');
+    fileInput.addEventListener('change', handleFileSelect);
+});
 
-    async copyResult() {
-        const textToCopy = this.resultContent.querySelector('.qr-result').textContent;
-        try {
-            await navigator.clipboard.writeText(textToCopy);
-            this.showStatus('Result copied to clipboard!', 'success');
-        } catch (err) {
-            this.showStatus('Failed to copy result.', 'error');
-        }
-    }
-
-    resetUI() {
-        this.resultContent.innerHTML = '<p class="no-result">Camera is off. Click "Start Camera" to begin scanning.</p>';
-        this.copyBtn.style.display = 'none';
-        this.clearStatus();
-    }
+// Switch between tabs
+function switchTab(tab) {
+    const tabs = document.querySelectorAll('.tab-content');
+    const buttons = document.querySelectorAll('.tab-btn');
     
-    showStatus(message, type) {
-        this.status.textContent = message;
-        this.status.className = `status-message ${type}`;
-    }
-
-    clearStatus() {
-        if (!this.status.classList.contains('error')) {
-            this.status.textContent = '';
-            this.status.className = 'status-message';
+    tabs.forEach(t => t.classList.remove('active'));
+    buttons.forEach(b => b.classList.remove('active'));
+    
+    if (tab === 'camera') {
+        document.getElementById('camera-tab').classList.add('active');
+        buttons[0].classList.add('active');
+    } else {
+        document.getElementById('file-tab').classList.add('active');
+        buttons[1].classList.add('active');
+        // Stop camera if switching away
+        if (html5QrcodeScanner) {
+            stopScanner();
         }
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    new QRCameraScanner();
-});
+// Start camera scanner
+function startScanner() {
+    const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0
+    };
+    
+    html5QrcodeScanner = new Html5Qrcode("reader");
+    
+    html5QrcodeScanner.start(
+        { facingMode: "environment" }, // Use back camera
+        config,
+        onScanSuccess,
+        onScanError
+    ).then(() => {
+        document.getElementById('start-button').classList.add('hidden');
+        document.getElementById('stop-button').classList.remove('hidden');
+    }).catch(err => {
+        console.error(`Unable to start scanning: ${err}`);
+        alert(`Camera Error: ${err}`);
+    });
+}
+
+// Stop camera scanner
+function stopScanner() {
+    if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().then(() => {
+            html5QrcodeScanner.clear();
+            document.getElementById('start-button').classList.remove('hidden');
+            document.getElementById('stop-button').classList.add('hidden');
+        }).catch(err => {
+            console.error(`Unable to stop scanning: ${err}`);
+        });
+    }
+}
+
+// Handle successful scan
+function onScanSuccess(decodedText, decodedResult) {
+    // Play success sound (optional)
+    playBeep();
+    
+    // Display result
+    displayResult(decodedText);
+    
+    // Add to history
+    addToHistory(decodedText);
+    
+    // Stop scanner after successful scan
+    stopScanner();
+}
+
+// Handle scan errors (silent - just for debugging)
+function onScanError(errorMessage) {
+    // Log errors to console for debugging
+    // console.log(`QR error: ${errorMessage}`);
+}
+
+// Handle file selection
+function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Show preview
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const preview = document.getElementById('file-preview');
+        preview.innerHTML = `<img src="${e.target.result}" alt="QR Code Preview">`;
+    };
+    reader.readAsDataURL(file);
+    
+    // Scan the file
+    const html5QrCode = new Html5Qrcode("reader");
+    html5QrCode.scanFile(file, true)
+        .then(decodedText => {
+            playBeep();
+            displayResult(decodedText);
+            addToHistory(decodedText);
+        })
+        .catch(err => {
+            alert(`Error scanning file: ${err}`);
+        });
+}
+
+// Display scan result
+function displayResult(text) {
+    const resultContainer = document.getElementById('result-container');
+    const resultText = document.getElementById('result-text');
+    
+    resultText.textContent = text;
+    resultContainer.classList.remove('hidden');
+    
+    // Check if it's a URL and make it clickable
+    if (isValidUrl(text)) {
+        resultText.innerHTML = `<a href="${text}" target="_blank" style="color: #667eea;">${text}</a>`;
+    }
+}
+
+// Copy result to clipboard
+function copyResult() {
+    const resultText = document.getElementById('result-text').textContent;
+    navigator.clipboard.writeText(resultText).then(() => {
+        alert('Copied to clipboard!');
+    }).catch(err => {
+        console.error('Could not copy text: ', err);
+    });
+}
+
+// Clear result
+function clearResult() {
+    document.getElementById('result-container').classList.add('hidden');
+    document.getElementById('result-text').textContent = '';
+}
+
+// Add to scan history
+function addToHistory(text) {
+    const historyItem = {
+        text: text,
+        timestamp: new Date().toISOString()
+    };
+    
+    scanHistory.unshift(historyItem);
+    
+    // Keep only last 10 items
+    if (scanHistory.length > 10) {
+        scanHistory = scanHistory.slice(0, 10);
+    }
+    
+    localStorage.setItem('qrScanHistory', JSON.stringify(scanHistory));
+    displayHistory();
+}
+
+// Display scan history
+function displayHistory() {
+    const historyList = document.getElementById('history-list');
+    
+    if (scanHistory.length === 0) {
+        historyList.innerHTML = '<p style="color: #666; text-align: center;">No scan history</p>';
+        return;
+    }
+    
+    historyList.innerHTML = scanHistory.map(item => {
+        const date = new Date(item.timestamp);
+        const timeString = date.toLocaleTimeString();
+        const dateString = date.toLocaleDateString();
+        
+        return `
+            <div class="history-item">
+                <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    ${item.text}
+                </div>
+                <div class="history-time">
+                    ${dateString} ${timeString}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Clear history
+function clearHistory() {
+    if (confirm('Are you sure you want to clear all scan history?')) {
+        scanHistory = [];
+        localStorage.removeItem('qrScanHistory');
+        displayHistory();
+    }
+}
+
+// Check if string is valid URL
+function isValidUrl(string) {
+    try {
+        new URL(string);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+// Play beep sound (optional)
+function playBeep() {
+    const beep = new Audio('beep.mp3'); // Ensure you have a beep.mp3 file in your project
+    beep.play().catch(err => {
+        console.error('Error playing beep sound:', err);
+    });
+}
