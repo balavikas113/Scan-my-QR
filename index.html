@@ -3,44 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Code Camera Scanner</title>
+    <title>QR Code Scanner</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Include html5-qrcode library -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <h1>QR Code Camera Scanner</h1>
+        <h1>QR Code Scanner</h1>
+        
+        <div class="scanner-container">
+            <!-- Tab buttons -->
+            <div class="tab-buttons">
+                <button class="tab-btn active" onclick="switchTab('camera')">
+                    📷 Camera Scan
+                </button>
+                <button class="tab-btn" onclick="switchTab('file')">
+                    📁 Upload Image
+                </button>
+            </div>
 
-        <!-- Camera Scanner Section -->
-        <div id="cameraSection">
-            <div class="camera-container">
-                <video id="video" autoplay muted playsinline></video>
-                <canvas id="canvas" style="display: none;"></canvas>
-                <div class="scan-overlay">
-                    <div class="scan-box"></div>
+            <!-- Camera Scanner Tab -->
+            <div id="camera-tab" class="tab-content active">
+                <div id="reader"></div>
+                <div class="controls">
+                    <button id="start-button" class="control-btn" onclick="startScanner()">
+                        Start Scanning
+                    </button>
+                    <button id="stop-button" class="control-btn hidden" onclick="stopScanner()">
+                        Stop Scanning
+                    </button>
                 </div>
             </div>
-            <div class="camera-controls">
-                <button id="startBtn" class="control-btn">Start Camera</button>
-                <button id="stopBtn" class="control-btn" disabled>Stop Camera</button>
+
+            <!-- File Upload Tab -->
+            <div id="file-tab" class="tab-content">
+                <div class="file-input-container">
+                    <input type="file" id="qr-input-file" accept="image/*">
+                    <label for="qr-input-file" class="file-input-label">
+                        Choose QR Code Image
+                    </label>
+                    <div id="file-preview"></div>
+                </div>
             </div>
         </div>
 
         <!-- Results Section -->
-        <div id="resultsSection" class="results-section">
-            <h3>Scan Result:</h3>
-            <div id="resultContent" class="result-content">
-                <p class="no-result">Camera is off. Click "Start Camera" to begin scanning.</p>
-            </div>
-            <button id="copyBtn" class="control-btn" style="display: none;">Copy Result</button>
+        <div id="result-container" class="result-container hidden">
+            <h2>Scan Result</h2>
+            <div id="result-text"></div>
+            <button class="control-btn" onclick="copyResult()">
+                📋 Copy Result
+            </button>
+            <button class="control-btn" onclick="clearResult()">
+                Clear
+            </button>
         </div>
 
-        <!-- Status Messages -->
-        <div id="status" class="status-message"></div>
+        <!-- Scan History -->
+        <div class="history-container">
+            <h3>Scan History</h3>
+            <div id="history-list"></div>
+            <button class="control-btn" onclick="clearHistory()">
+                Clear History
+            </button>
+        </div>
     </div>
 
-    <!-- External library for QR code decoding -->
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-    <!-- Your application script -->
     <script src="script.js"></script>
 </body>
 </html>
